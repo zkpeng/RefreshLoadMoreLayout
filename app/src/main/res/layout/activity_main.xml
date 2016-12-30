@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<demo.zkp.com.myapplication.RefreshLoadMoreLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:refresh="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/refresh_view"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    refresh:maxDragDistance="200dp">
+
+    <RelativeLayout
+        android:id="@+id/head"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginTop="-50dp">
+
+        <TextView
+            android:id="@+id/text_head"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:gravity="center"
+            android:padding="10dp"
+            android:text="Loading" />
+
+        <ProgressBar
+            android:id="@+id/pb_view_head"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_centerVertical="true"
+            android:layout_toLeftOf="@id/text_head"
+            android:layout_toStartOf="@id/text_head" />
+
+        <ImageView
+            android:id="@+id/image_view_head"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_centerVertical="true"
+            android:layout_toLeftOf="@id/text_head"
+            android:layout_toStartOf="@id/text_head"
+            android:contentDescription="@null" />
+
+    </RelativeLayout>
+
+    <android.support.v7.widget.RecyclerView
+        android:id="@+id/recyclerview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:overScrollMode="never">
+
+    </android.support.v7.widget.RecyclerView>
+
+    <RelativeLayout
+        android:id="@+id/foot"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginBottom="-50dp">
+
+        <TextView
+            android:id="@+id/text_foot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:gravity="center"
+            android:padding="10dp"
+            android:text="Loading" />
+
+        <ProgressBar
+            android:id="@+id/pb_view_foot"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_centerVertical="true"
+            android:layout_toLeftOf="@id/text_foot"
+            android:layout_toStartOf="@id/text_foot" />
+
+        <ImageView
+            android:id="@+id/image_view_foot"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_centerVertical="true"
+            android:layout_toLeftOf="@id/text_foot"
+            android:layout_toStartOf="@id/text_foot"
+            android:contentDescription="@null" />
+
+    </RelativeLayout>
+
+</demo.zkp.com.myapplication.RefreshLoadMoreLayout>
