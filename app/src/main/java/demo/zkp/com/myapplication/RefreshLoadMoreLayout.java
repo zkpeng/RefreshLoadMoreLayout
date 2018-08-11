@@ -8,10 +8,8 @@ import android.support.v4.view.MotionEventCompat;
 import android.support.v4.view.ViewCompat;
 import android.support.v7.widget.RecyclerView;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.animation.Animation;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.RotateAnimation;
@@ -24,6 +22,7 @@ import android.widget.TextView;
 
 /**
  * Created by zkp on 2016/12/27.
+ * Modified by zkp on 2018/08/11 修改问题，优化性能。
  */
 
 public class RefreshLoadMoreLayout extends LinearLayout {
@@ -35,25 +34,28 @@ public class RefreshLoadMoreLayout extends LinearLayout {
     private TextView mTvHeader, mTvFooter;
     private RecyclerView mRecyclerView;
     private float radio = 1f;
+    private int maxDragDistanceDefault = 400;
     private int maxDragDistance;
+    private int headerHeight;
+    private int footerHeight;
     private Scroller mScroller;
     private float mPreY;
+    private float curY;
     private Handler mHandler;
     private ProgressBar progressBarHeader, progressBarFooter;
     private ImageView ivHeader, ivFooter;
+    private LinearLayout llChild;
     private boolean hasRefreshUpAnimPlayed = false;
     private boolean hasRefreshBackAnimPlayed = false;
     private boolean hasLoadMoreDownAnimPlayed = false;
     private boolean hasLoadMoreUpAnimPlayed = false;
     private boolean canLoadMore = true;
 
-    private int mState = PULL_TO_REFRESH;
-    private static final int PREPARE_TO_REFRESH = 0;
-    private static final int PULL_TO_REFRESH = 1;
-    private static final int REFRESHING = 2;
-    private static final int PREPARE_TO_LOADMORE = 3;
-    private static final int PULL_TO_LOADMORE = 4;
-    private static final int LOADINGMORE = 5;
+    private Status mState = Status.PULL_TO_REFRESH;
+
+    public enum Status {
+        PREPARE_TO_REFRESH, PULL_TO_REFRESH, REFRESHING, PREPARE_TO_LOADMORE, PULL_TO_LOADMORE, LOADINGMORE;
+    }
 
     private static final int INVALIDE_POINTER_ID = -1;
 
@@ -71,29 +73,43 @@ public class RefreshLoadMoreLayout extends LinearLayout {
 
     public RefreshLoadMoreLayout(Context context, AttributeSet attrs) {
         super(context, attrs);
-        maxDragDistance = Dp2Px(context, 400);
+        View.inflate(getContext(), R.layout.rv_refresh_more, this);
+        llChild = (LinearLayout) getChildAt(0);
         mScroller = new Scroller(context, new DecelerateInterpolator());
+        TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.RefreshLoadMoreRecycerView);
+        maxDragDistance = (int) ta.getDimension(R.styleable.RefreshLoadMoreRecycerView_maxDragDistance, Dp2Px(context, maxDragDistanceDefault));
+        headerHeight = (int) ta.getDimension(R.styleable.RefreshLoadMoreRecycerView_headerHeight, Dp2Px(context, 50));
+        footerHeight = (int) ta.getDimension(R.styleable.RefreshLoadMoreRecycerView_footerHeight, Dp2Px(context, 50));
+        ta.recycle();
         mHandler = new Handler() {
             @Override
             public void handleMessage(Message msg) {
                 stopRefresh();
             }
         };
-        TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.RefreshLoadMoreRecycerView);
-        maxDragDistance = (int) ta.getDimension(R.styleable.RefreshLoadMoreRecycerView_maxDragDistance, maxDragDistance);
-        ta.recycle();
     }
 
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
         initHeaderView();
-        mRecyclerView = (RecyclerView) getChildAt(1);
+        mRecyclerView = (RecyclerView) llChild.getChildAt(1);
         initFooterView();
+
+        LayoutParams paramsRv = (LayoutParams) this.getChildAt(0).getLayoutParams();
+        paramsRv.topMargin = -headerHeight;
+        this.getChildAt(0).setLayoutParams(paramsRv);
     }
 
+    /**
+     * 初使化下拉刷布局
+     */
     private void initHeaderView() {
-        mHeader = (RelativeLayout) getChildAt(0);
+        mHeader = (RelativeLayout) llChild.getChildAt(0);
+        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) mHeader.getLayoutParams();
+        params.height = headerHeight;
+        mHeader.setLayoutParams(params);
+
         mTvHeader = (TextView) mHeader.getChildAt(0);
         progressBarHeader = (ProgressBar) mHeader.findViewById(R.id.pb_view_head);
         mTvHeader.setText("下拉刷新");
@@ -103,8 +119,14 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         progressBarHeader.setVisibility(View.GONE);
     }
 
+    /**
+     * 初使化上拉加载更多布局
+     */
     private void initFooterView() {
-        mFooter = (RelativeLayout) getChildAt(2);
+        mFooter = (RelativeLayout) llChild.getChildAt(2);
+        LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) mFooter.getLayoutParams();
+        params.height = footerHeight;
+        mFooter.setLayoutParams(params);
         mTvFooter = (TextView) mFooter.getChildAt(0);
         progressBarFooter = (ProgressBar) mFooter.findViewById(R.id.pb_view_foot);
         mTvFooter.setText("上拉加载更多");
@@ -120,41 +142,37 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         switch (action) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN:
-                if (mActivePointerId == INVALIDE_POINTER_ID) {
-                    mPreY = ev.getY();
-                    mActivePointerId = MotionEventCompat.getPointerId(ev, ev.getActionIndex());
+                if (mState == Status.REFRESHING || mState == Status.LOADINGMORE) {
+                    if (mActivePointerId == INVALIDE_POINTER_ID) {
+                        mActivePointerId = MotionEventCompat.getPointerId(ev, ev.getActionIndex());
+                    }
+                    isIntercepted = true;//如果当前正在刷新中或者加载更多中，拦截Event
                 }
+                initialY = ev.getY();
                 break;
             case MotionEvent.ACTION_MOVE:
+
                 if (mActivePointerId == INVALIDE_POINTER_ID) {
                     mActivePointerId = MotionEventCompat.getPointerId(ev, ev.getActionIndex());
                 }
                 int actionIndex = MotionEventCompat.findPointerIndex(ev, mActivePointerId);
                 if (actionIndex != -1) {
                     float nowY = MotionEventCompat.getY(ev, actionIndex);
-                    if (!canRecycerViewScrollDown() || !canRecycerViewScrollUp()) {
-                        if (!canRecycerViewScrollDown()) {
-                            if (nowY - initialY >= 0 || mState == REFRESHING) {
-                                isIntercepted = true;
-                                if (initialY == -1) {
-                                    initialY = MotionEventCompat.getY(ev, actionIndex);
-                                }
-                            } else {
-                                isIntercepted = false;
-                                initialY = -1;
-                            }
-                        }
-                        if (!canRecycerViewScrollUp() && canLoadMore) {
-                            if (initialY == -1) {
-                                initialY = MotionEventCompat.getY(ev, actionIndex);
-                            }
-                            if (initialY - nowY >= 0 || mState == LOADINGMORE) {
-                                isIntercepted = true;
 
-                            } else {
-                                isIntercepted = false;
-                                initialY = -1;
-                            }
+                    if (!canRecycerViewScrollDown()) {//RecyclerView不能往下拉
+                        //正在往下拉（或者正在下拉状态）或者正处于刷新状态，拦截Event
+                        if (nowY - initialY >= 0 || mState == Status.REFRESHING) {
+                            isIntercepted = true;
+                        } else {
+                            isIntercepted = false;
+                        }
+
+                    } else if (!canRecycerViewScrollUp() && canLoadMore) {//RecyclerView不能往上拉
+                        //正在往上拉（或者正在上拉状态）或者正处于正在加载更多中状态，拦截Event
+                        if (initialY - nowY >= 0 || mState == Status.LOADINGMORE) {
+                            isIntercepted = true;
+                        } else {
+                            isIntercepted = false;
                         }
                     } else {
                         initialY = mPreY = ev.getY();
@@ -162,6 +180,8 @@ public class RefreshLoadMoreLayout extends LinearLayout {
                 }
                 break;
         }
+        //拦截的话，走自己的onTouchEvent，否则走默认的super.dispatchTouchEvent(ev);
+        //此处在dispatchTouchEvent方法中判断是否拦截而不是放在OnInterceptTouchEvent方法中，是为了方便处理由拦截过渡成不拦截的情况，实现更好的效果
         return isIntercepted ? onTouchEvent(ev) : super.dispatchTouchEvent(ev);
     }
 
@@ -171,87 +191,91 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         switch (action) {
             case MotionEvent.ACTION_DOWN:
                 int actionIndex = MotionEventCompat.findPointerIndex(event, mActivePointerId);
-                initialY = MotionEventCompat.getY(event, actionIndex);
+                initialY = mPreY = MotionEventCompat.getY(event, actionIndex);
                 break;
             case MotionEvent.ACTION_MOVE:
                 actionIndex = MotionEventCompat.findPointerIndex(event, mActivePointerId);
                 if (actionIndex == -1) {
                     return true;
                 }
-                float nowY = MotionEventCompat.getY(event, actionIndex);
-                if (mState != REFRESHING && mState != LOADINGMORE) {
-                    int iDes = (int) ((initialY - nowY) * radio);
-                    if (iDes >= -maxDragDistance && iDes <= maxDragDistance) {
-                        this.scrollTo(0, iDes);
+                curY = MotionEventCompat.getY(event, actionIndex);
+                if (mState != Status.REFRESHING && mState != Status.LOADINGMORE) {
+                    int iDes = (int) ((initialY - curY) * radio);
+                    if (iDes >= -maxDragDistance && iDes <= maxDragDistance) {//在可滑动的范围内
+                        llChild.scrollTo(0, iDes);
                     } else {
+                        //控制不超过可滑动的最大范围
                         if (iDes > 0) {
-                            this.scrollTo(0, maxDragDistance);
+                            llChild.scrollTo(0, maxDragDistance);
                         } else {
-                            this.scrollTo(0, -maxDragDistance);
+                            llChild.scrollTo(0, -maxDragDistance);
                         }
                     }
                 } else {
-                    if (mState == REFRESHING) {
-                        int dy = (int) ((mPreY - nowY) * radio);
-                        if (getScrollY() + dy <= 0) {
-                            if (!canRecycerViewScrollDown()) {
-                                if (getScrollY() + dy >= -maxDragDistance) {
-                                    this.scrollBy(0, dy);
+                    if (mState == Status.REFRESHING) {//处于正在刷新中状态
+                        int dy = (int) ((mPreY - curY) * radio);
+                        if (llChild.getScrollY() + dy <= 0) {//Head View处理可见状态
+                            if (!canRecycerViewScrollDown()) {//当前RecyclerView不可往下滑动(第一个Item完全显示出来)
+                                //控制可滑动的范围
+                                if (llChild.getScrollY() + dy >= -maxDragDistance) {
+                                    llChild.scrollBy(0, dy);
                                 } else {
-                                    this.scrollTo(0, -maxDragDistance);
+                                    llChild.scrollTo(0, -maxDragDistance);
                                 }
                             } else {
+                                //将事件派发给RecyclerView处理（让RecyclerView滑动）
                                 dispatchEventToRecyclerView(event);
                             }
                         } else {
-                            this.scrollTo(0, 0);
+                            //让RecylcerView归位，并且将事件派发给RecyclerView处理（让RecyclerView滑动）
+                            llChild.scrollTo(0, 0);
                             dispatchEventToRecyclerView(event);
                         }
-                    } else if (mState == LOADINGMORE) {
-                        int dy = (int) ((mPreY - nowY) * radio);
-                        if (getScrollY() + dy >= 0) {
+                    } else if (mState == Status.LOADINGMORE) {//与上面类似
+                        int dy = (int) ((mPreY - curY) * radio);
+                        if (llChild.getScrollY() + dy >= 0) {
                             if (!canRecycerViewScrollUp()) {
-                                if (getScrollY() + dy <= maxDragDistance) {
-                                    this.scrollBy(0, dy);
+                                if (llChild.getScrollY() + dy <= maxDragDistance) {
+                                    llChild.scrollBy(0, dy);
                                 } else {
-                                    this.scrollTo(0, maxDragDistance);
+                                    llChild.scrollTo(0, maxDragDistance);
                                 }
                             } else {
                                 dispatchEventToRecyclerView(event);
                             }
                         } else {
-                            this.scrollTo(0, 0);
+                            llChild.scrollTo(0, 0);
                             dispatchEventToRecyclerView(event);
                         }
                     }
                 }
-                if (mState != REFRESHING && !canRecycerViewScrollDown()) {
-                    if (-getScrollY() >= Dp2Px(getContext(), 50)) {
+                if (mState != Status.REFRESHING && !canRecycerViewScrollDown()) {
+                    if (-llChild.getScrollY() >= headerHeight) {//松开可刷新
                         mTvHeader.setText("松开刷新");
-                        mState = PREPARE_TO_REFRESH;
+                        mState = Status.PREPARE_TO_REFRESH;
                         if (!hasRefreshUpAnimPlayed) {
                             playRefreshArrowUpAnimation();
                         }
                     } else {
                         mTvHeader.setText("下拉刷新");
-                        mState = PULL_TO_REFRESH;
+                        mState = Status.PULL_TO_REFRESH;
                         playRefreshArrowDownAnimation();
                     }
                 }
-                if (mState != LOADINGMORE && !canRecycerViewScrollUp() && canLoadMore) {
-                    if (getScrollY() >= Dp2Px(getContext(), 50)) {
+                if (mState != Status.LOADINGMORE && !canRecycerViewScrollUp() && canLoadMore) {
+                    if (llChild.getScrollY() >= footerHeight) {//松开可加载更多
                         mTvFooter.setText("松开加载更多");
-                        mState = PREPARE_TO_LOADMORE;
+                        mState = Status.PREPARE_TO_LOADMORE;
                         if (!hasLoadMoreDownAnimPlayed) {
                             playLoadMoreArrowDownAnimation();
                         }
                     } else {
                         mTvFooter.setText("上拉加载更多");
-                        mState = PULL_TO_LOADMORE;
+                        mState = Status.PULL_TO_LOADMORE;
                         playLoadMoreArrowUpAnimation();
                     }
                 }
-                mPreY = nowY;
+                mPreY = curY;
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_POINTER_UP:
@@ -260,38 +284,37 @@ public class RefreshLoadMoreLayout extends LinearLayout {
                 if (actionIndex == -1) {
                     return true;
                 }
-                if (mState == PREPARE_TO_REFRESH) {
-                    smoothScrollToPositon(-Dp2Px(getContext(), 50));
+                if (mState == Status.PREPARE_TO_REFRESH) {
+                    smoothScrollToPositon(-headerHeight);
                     mTvHeader.setText("正在刷新...");
-                    mState = REFRESHING;
+                    mState = Status.REFRESHING;
                     startRefresh();
                     ivHeader.clearAnimation();
                     ivHeader.setVisibility(GONE);
                     progressBarHeader.setVisibility(VISIBLE);
-                } else if (mState == PULL_TO_REFRESH) {
+                } else if (mState == Status.PULL_TO_REFRESH) {
                     smoothScrollToPositon(0);
-                } else if (mState == REFRESHING) {
-                    if (getScrollY() <= -Dp2Px(getContext(), 50)) {
-                        smoothScrollToPositon(-Dp2Px(getContext(), 50));
+                } else if (mState == Status.REFRESHING) {
+                    if (llChild.getScrollY() <= -headerHeight) {
+                        smoothScrollToPositon(-headerHeight);
                     }
                 }
-                if (mState == PREPARE_TO_LOADMORE) {
-                    smoothScrollToPositon(Dp2Px(getContext(), 50));
+                if (mState == Status.PREPARE_TO_LOADMORE) {
+                    smoothScrollToPositon(footerHeight);
                     mTvFooter.setText("正在加载更多...");
-                    mState = LOADINGMORE;
+                    mState = Status.LOADINGMORE;
                     startLoadMore();
                     ivFooter.clearAnimation();
                     ivFooter.setVisibility(GONE);
                     progressBarFooter.setVisibility(VISIBLE);
-                } else if (mState == PULL_TO_LOADMORE) {
+                } else if (mState == Status.PULL_TO_LOADMORE) {
                     smoothScrollToPositon(0);
-                } else if (mState == LOADINGMORE) {
-                    if (getScrollY() >= Dp2Px(getContext(), 50)) {
-                        smoothScrollToPositon(Dp2Px(getContext(), 50));
+                } else if (mState == Status.LOADINGMORE) {
+                    if (llChild.getScrollY() >= footerHeight) {
+                        smoothScrollToPositon(footerHeight);
                     }
                 }
                 isIntercepted = false;
-                initialY = -1;
                 mPreY = -1;
                 mActivePointerId = INVALIDE_POINTER_ID;
                 break;
@@ -299,6 +322,10 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         return true;
     }
 
+    /**
+     * 将事件派发给RecyclerView处理
+     * @param event
+     */
     private void dispatchEventToRecyclerView(MotionEvent event) {
         MotionEvent newEvent = MotionEvent.obtain(event);
         newEvent.setAction(MotionEvent.ACTION_MOVE);
@@ -307,7 +334,6 @@ public class RefreshLoadMoreLayout extends LinearLayout {
     }
 
     private void playRefreshArrowDownAnimation() {
-//        if (event.getY() < mPreY) {
         if (!hasRefreshBackAnimPlayed) {
             RotateAnimation animation = new RotateAnimation(180f, 360f, Animation.RELATIVE_TO_SELF,
                     0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
@@ -318,7 +344,6 @@ public class RefreshLoadMoreLayout extends LinearLayout {
             hasRefreshBackAnimPlayed = true;
             hasRefreshUpAnimPlayed = false;
         }
-//        }
     }
 
     private void playRefreshArrowUpAnimation() {
@@ -385,28 +410,28 @@ public class RefreshLoadMoreLayout extends LinearLayout {
     }
 
     public void stopRefresh() {
-        if (mState == REFRESHING) {
+        if (mState == Status.REFRESHING) {
             smoothScrollToPositon(0);
             mTvHeader.setText("下拉刷新");
-            mState = PULL_TO_REFRESH;
+            mState = Status.PULL_TO_REFRESH;
             ivHeader.setVisibility(VISIBLE);
             progressBarHeader.setVisibility(GONE);
-            initialY = -1;
             hasRefreshUpAnimPlayed = false;
             hasRefreshBackAnimPlayed = false;
+            initialY = curY;
         }
     }
 
     public void stopLoadMore() {
-        if (mState == LOADINGMORE) {
+        if (mState == Status.LOADINGMORE) {
             smoothScrollToPositon(0);
             mTvFooter.setText("上拉加载更多");
-            mState = PULL_TO_LOADMORE;
+            mState = Status.PULL_TO_LOADMORE;
             ivFooter.setVisibility(VISIBLE);
             progressBarFooter.setVisibility(GONE);
-            initialY = -1;
             hasLoadMoreDownAnimPlayed = false;
             hasLoadMoreUpAnimPlayed = false;
+            initialY = curY;
         }
     }
 
@@ -414,8 +439,12 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         canLoadMore = can;
     }
 
+    /**
+     * 滑动到指定位置
+     * @param toY
+     */
     private void smoothScrollToPositon(int toY) {
-        mScroller.startScroll(0, getScrollY(), 0, toY - getScrollY());
+        mScroller.startScroll(0, llChild.getScrollY(), 0, toY - llChild.getScrollY());
         invalidate();
     }
 
@@ -423,7 +452,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
     public void computeScroll() {
         super.computeScroll();
         if (mScroller.computeScrollOffset()) {
-            this.scrollTo(0, mScroller.getCurrY());
+            llChild.scrollTo(0, mScroller.getCurrY());
             invalidate();
         }
     }

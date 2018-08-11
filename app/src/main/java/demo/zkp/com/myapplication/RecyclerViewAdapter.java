@@ -5,12 +5,11 @@ import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * Created by Administrator on 2016/12/23.
+ * Created by zkp on 2016/12/23.
  */
 
 public class RecyclerViewAdapter extends RecyclerView.Adapter {

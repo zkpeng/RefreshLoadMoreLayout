@@ -2,5 +2,7 @@
 <resources>
     <declare-styleable name="RefreshLoadMoreRecycerView">
         <attr name="maxDragDistance" format="dimension"/>
+        <attr name="headerHeight" format="dimension"/>
+        <attr name="footerHeight" format="dimension"/>
     </declare-styleable>
 </resources>
