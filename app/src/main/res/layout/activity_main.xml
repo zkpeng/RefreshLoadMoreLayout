@@ -12,7 +12,9 @@
         android:orientation="vertical"
         refresh:footerHeight="50dp"
         refresh:headerHeight="50dp"
-        refresh:maxDragDistance="200dp">
+        refresh:maxDragDistance="200dp"
+        refresh:supportRefresh="true"
+        refresh:supportLoadMore="true">
 
         <android.support.v7.widget.RecyclerView
             android:id="@+id/recyclerview"

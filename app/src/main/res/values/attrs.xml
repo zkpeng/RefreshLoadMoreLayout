@@ -4,5 +4,7 @@
         <attr name="maxDragDistance" format="dimension"/>
         <attr name="headerHeight" format="dimension"/>
         <attr name="footerHeight" format="dimension"/>
+        <attr name="supportRefresh" format="boolean"/>
+        <attr name="supportLoadMore" format="boolean"/>
     </declare-styleable>
 </resources>

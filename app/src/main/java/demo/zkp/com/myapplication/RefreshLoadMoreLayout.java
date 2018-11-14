@@ -33,7 +33,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
     private RelativeLayout mHeader, mFooter;
     private TextView mTvHeader, mTvFooter;
     private RecyclerView mRecyclerView;
-    private float radio = 1f;
+    private float radio = 0.5f;
     private int maxDragDistanceDefault = 400;
     private int maxDragDistance;
     private int headerHeight;
@@ -45,11 +45,12 @@ public class RefreshLoadMoreLayout extends LinearLayout {
     private ProgressBar progressBarHeader, progressBarFooter;
     private ImageView ivHeader, ivFooter;
     private LinearLayout llChild;
+    private boolean supportRefresh = true;
+    private boolean supportLoadMore = true;
     private boolean hasRefreshUpAnimPlayed = false;
     private boolean hasRefreshBackAnimPlayed = false;
     private boolean hasLoadMoreDownAnimPlayed = false;
     private boolean hasLoadMoreUpAnimPlayed = false;
-    private boolean canLoadMore = true;
 
     private Status mState = Status.PULL_TO_REFRESH;
 
@@ -80,6 +81,8 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         maxDragDistance = (int) ta.getDimension(R.styleable.RefreshLoadMoreRecycerView_maxDragDistance, Dp2Px(context, maxDragDistanceDefault));
         headerHeight = (int) ta.getDimension(R.styleable.RefreshLoadMoreRecycerView_headerHeight, Dp2Px(context, 50));
         footerHeight = (int) ta.getDimension(R.styleable.RefreshLoadMoreRecycerView_footerHeight, Dp2Px(context, 50));
+        supportRefresh = (boolean) ta.getBoolean(R.styleable.RefreshLoadMoreRecycerView_supportRefresh, true);
+        supportLoadMore = ta.getBoolean(R.styleable.RefreshLoadMoreRecycerView_supportLoadMore, true);
         ta.recycle();
         mHandler = new Handler() {
             @Override
@@ -161,7 +164,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
                 if (actionIndex != -1) {
                     float nowY = MotionEventCompat.getY(ev, actionIndex);
 
-                    if (!canRecycerViewScrollDown()) {//RecyclerView不能往下拉
+                    if (!canRecycerViewScrollDown() && supportRefresh) {//RecyclerView不能往下拉
                         //正在往下拉（或者正在下拉状态）或者正处于刷新状态，拦截Event
                         if (nowY - initialY >= 0 || mState == Status.REFRESHING) {
                             isIntercepted = true;
@@ -169,7 +172,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
                             isIntercepted = false;
                         }
 
-                    } else if (!canRecycerViewScrollUp() && canLoadMore) {//RecyclerView不能往上拉
+                    } else if (!canRecycerViewScrollUp() && supportLoadMore) {//RecyclerView不能往上拉
                         //正在往上拉（或者正在上拉状态）或者正处于正在加载更多中状态，拦截Event
                         if (initialY - nowY >= 0 || mState == Status.LOADINGMORE) {
                             isIntercepted = true;
@@ -204,7 +207,8 @@ public class RefreshLoadMoreLayout extends LinearLayout {
                 if (mState != Status.REFRESHING && mState != Status.LOADINGMORE) {
                     int iDes = (int) ((initialY - curY) * radio);
                     if (iDes >= -maxDragDistance && iDes <= maxDragDistance) {//在可滑动的范围内
-                        llChild.scrollTo(0, iDes);
+                        if ((iDes > 0 && supportLoadMore) || (iDes < 0 && supportRefresh))
+                            llChild.scrollTo(0, iDes);
                     } else {
                         //控制不超过可滑动的最大范围
                         if (iDes > 0) {
@@ -251,7 +255,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
                         }
                     }
                 }
-                if (mState != Status.REFRESHING && !canRecycerViewScrollDown()) {
+                if (mState != Status.REFRESHING && !canRecycerViewScrollDown() && supportRefresh) {
                     if (-llChild.getScrollY() >= headerHeight) {//松开可刷新
                         mTvHeader.setText("松开刷新");
                         mState = Status.PREPARE_TO_REFRESH;
@@ -264,7 +268,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
                         playRefreshArrowDownAnimation();
                     }
                 }
-                if (mState != Status.LOADINGMORE && !canRecycerViewScrollUp() && canLoadMore) {
+                if (mState != Status.LOADINGMORE && !canRecycerViewScrollUp() && supportLoadMore) {
                     if (llChild.getScrollY() >= footerHeight) {//松开可加载更多
                         mTvFooter.setText("松开加载更多");
                         mState = Status.PREPARE_TO_LOADMORE;
@@ -412,6 +416,9 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         }
     }
 
+    /**
+     * 刷新结束
+     */
     public void stopRefresh() {
         if (mState == Status.REFRESHING) {
             smoothScrollToPositon(0);
@@ -425,6 +432,9 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         }
     }
 
+    /**
+     * 加载更多结束
+     */
     public void stopLoadMore() {
         if (mState == Status.LOADINGMORE) {
             smoothScrollToPositon(0);
@@ -438,8 +448,20 @@ public class RefreshLoadMoreLayout extends LinearLayout {
         }
     }
 
-    public void canLoadMore(boolean can) {
-        canLoadMore = can;
+    /**
+     * 设置是否支持刷新操作
+     * @param can
+     */
+    public void setSupportRefresh(boolean can) {
+        supportRefresh = can;
+    }
+
+    /**
+     * 设置是否支持加载更多操作
+     * @param can
+     */
+    public void setSupportLoadMore(boolean can) {
+        supportLoadMore = can;
     }
 
     /**
