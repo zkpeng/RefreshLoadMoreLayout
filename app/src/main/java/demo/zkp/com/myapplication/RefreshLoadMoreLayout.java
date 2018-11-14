@@ -73,7 +73,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
 
     public RefreshLoadMoreLayout(Context context, AttributeSet attrs) {
         super(context, attrs);
-        View.inflate(getContext(), R.layout.rv_refresh_more, this);
+        View.inflate(getContext(), R.layout.ll_header_footer, this);
         llChild = (LinearLayout) getChildAt(0);
         mScroller = new Scroller(context, new DecelerateInterpolator());
         TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.RefreshLoadMoreRecycerView);
@@ -93,7 +93,9 @@ public class RefreshLoadMoreLayout extends LinearLayout {
     protected void onFinishInflate() {
         super.onFinishInflate();
         initHeaderView();
-        mRecyclerView = (RecyclerView) llChild.getChildAt(1);
+        mRecyclerView = (RecyclerView) getChildAt(1);
+        this.removeViewAt(1);
+        llChild.addView(mRecyclerView, 1);
         initFooterView();
 
         LayoutParams paramsRv = (LayoutParams) this.getChildAt(0).getLayoutParams();
@@ -324,6 +326,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
 
     /**
      * 将事件派发给RecyclerView处理
+     *
      * @param event
      */
     private void dispatchEventToRecyclerView(MotionEvent event) {
@@ -441,6 +444,7 @@ public class RefreshLoadMoreLayout extends LinearLayout {
 
     /**
      * 滑动到指定位置
+     *
      * @param toY
      */
     private void smoothScrollToPositon(int toY) {
